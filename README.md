@@ -4,7 +4,7 @@ A simple backend service for creating events, registering users, and managing se
 
 ## Overview
 
-This project implements an Event Registration System API that allows users to:
+This project implements an Event Registration System API that allows users to: 
 
 * Create events with limited seat capacity
 * Register users for events

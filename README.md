@@ -2,19 +2,43 @@
 
 A simple backend service for creating events, registering users, and managing seat availability using FastAPI, SQLAlchemy, and SQLite.
 
+## Overview
+
+This project implements an Event Registration System API that allows users to:
+
+* Create events with limited seat capacity
+* Register users for events
+* Prevent duplicate registrations
+* Prevent overbooking
+* Cancel registrations while preserving history
+* View events with registration statistics
+* Filter and sort events
+
+The API is built using FastAPI, SQLAlchemy ORM, and SQLite.
+
+---
+
 ## Features
 
-- Create events with unique names, future dates, and valid seat counts
-- Register users to events with active registration enforcement
-- Prevent duplicate registrations for the same user and event
-- Prevent overbooking through transactional registration logic
-- Cancel registrations without deleting data
-- Query events with optional upcoming filtering and date sorting
-- View registrations for a specific event
+* Create events with unique names
+* Validate future event dates
+* Validate positive seat counts
+* Register users for events
+* Prevent duplicate registrations
+* Prevent registrations when an event is full
+* Store registration timestamps
+* Cancel registrations without deleting historical data
+* View active registrations for an event
+* Filter upcoming events
+* Sort events by date
+* Automatic OpenAPI/Swagger documentation
+* Persistent SQLite storage
+
+---
 
 ## Project Structure
 
-```
+```text
 app/
 ├── main.py
 ├── database.py
@@ -22,130 +46,271 @@ app/
 ├── schemas.py
 ├── crud.py
 ├── dependencies.py
+│
 ├── routers/
 │   ├── events.py
 │   └── registrations.py
+│
 └── services/
     └── registration_service.py
+
 requirements.txt
 README.md
 .gitignore
 ```
 
+---
+
+## Technology Stack
+
+* Python 3.11+
+* FastAPI
+* SQLAlchemy ORM
+* SQLite
+* Pydantic
+* Uvicorn
+
+---
+
 ## Setup
 
-1. Create a Python 3.11+ virtual environment
+### 1. Create a virtual environment
 
 ```bash
 python -m venv .venv
+```
+
+Activate it:
+
+Windows PowerShell:
+
+```bash
 .\.venv\Scripts\Activate.ps1
 ```
 
-2. Install dependencies
+### 2. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-3. Start the API server
+### 3. Run the application
 
 ```bash
 uvicorn app.main:app --reload
 ```
 
-4. Open API docs
+### 4. Open API documentation
 
-- Swagger UI: `http://127.0.0.1:8000/docs`
-- ReDoc: `http://127.0.0.1:8000/redoc`
+Swagger UI:
+
+```text
+http://127.0.0.1:8000/docs
+```
+
+ReDoc:
+
+```text
+http://127.0.0.1:8000/redoc
+```
+
+---
 
 ## API Endpoints
 
-### Create Event
+### Events
 
-- `POST /events`
-- Request body:
-  ```json
-  {
-    "name": "Annual Conference",
-    "total_seats": 150,
-    "event_date": "2026-08-10"
-  }
-  ```
-- Response:
-  ```json
-  {
-    "id": 1,
-    "name": "Annual Conference",
-    "total_seats": 150,
-    "event_date": "2026-08-10",
-    "created_at": "2026-06-10T12:00:00.000000",
-    "total_registrations": 0,
-    "available_seats": 150
-  }
-  ```
+#### Create Event
 
-### List Events
+```http
+POST /events
+```
 
-- `GET /events`
-- Query params:
-  - `upcoming` (boolean)
-  - `sort_ascending` (boolean)
-- Response returns events with registration counts and availability.
+Example Request:
 
-### Get Event Details
+```json
+{
+  "name": "Annual Conference",
+  "total_seats": 150,
+  "event_date": "2026-08-10"
+}
+```
 
-- `GET /events/{id}`
-- Response includes available seats and total registrations.
+---
 
-### Register User
+#### List Events
 
-- `POST /registrations`
-- Request body:
-  ```json
-  {
-    "event_id": 1,
-    "user_name": "Jane Doe"
-  }
-  ```
-- Response:
-  ```json
-  {
-    "id": 1,
-    "event_id": 1,
-    "user_name": "Jane Doe",
-    "status": "active",
-    "registered_at": "2026-06-10T12:10:00.000000",
-    "cancelled_at": null
-  }
-  ```
+```http
+GET /events
+```
 
-### Cancel Registration
+Query Parameters:
 
-- `DELETE /registrations/{id}`
-- Response returns the cancelled registration record.
+| Parameter      | Type    | Description               |
+| -------------- | ------- | ------------------------- |
+| upcoming       | boolean | Return only future events |
+| sort_ascending | boolean | Sort events by date       |
 
-### Get Event Registrations
+Returns:
 
-- `GET /events/{id}/registrations`
-- Returns **active registrations only** for the event
-- Cancelled registrations are excluded from this list (see note below)
-- Response includes all currently valid user registrations
+* Total registrations
+* Available seats
+* Event details
+
+---
+
+#### Get Event Details
+
+```http
+GET /events/{event_id}
+```
+
+Returns:
+
+* Event information
+* Total registrations
+* Available seats
+
+---
+
+#### Get Event Registrations
+
+```http
+GET /events/{event_id}/registrations
+```
+
+Returns only **active registrations**.
+
+Cancelled registrations remain stored in the database for audit/history purposes but are excluded from this endpoint.
+
+---
+
+### Registrations
+
+#### Register User
+
+```http
+POST /registrations
+```
+
+Example Request:
+
+```json
+{
+  "event_id": 1,
+  "user_name": "Jane Doe"
+}
+```
+
+---
+
+#### Cancel Registration
+
+```http
+DELETE /registrations/{registration_id}
+```
+
+Cancels a registration while preserving historical records.
+
+---
 
 ## Design Decisions
 
-- `Event` and `Registration` share a one-to-many relationship with SQLAlchemy ORM.
-- Registration cancellation preserves history by updating `status` and `cancelled_at`.
-- Active seat count is calculated dynamically so cancelled registrations do not consume seats.
-- SQLite transactions use `BEGIN IMMEDIATE` to reduce overbooking risks under concurrency.
-- Input validation is enforced by Pydantic models and domain checks in service logic.
-- **Cancelled registrations are excluded from active registration listings** but remain in the database for audit purposes. The `GET /events/{id}/registrations` endpoint returns only registrations with `status="active"`.
+### Event and Registration Relationship
+
+An Event can have many Registrations.
+
+A Registration belongs to one Event.
+
+### Soft Cancellation
+
+Registrations are not deleted.
+
+Instead:
+
+* status = "cancelled"
+* cancelled_at timestamp is stored
+
+This preserves registration history.
+
+### Seat Availability
+
+Available seats are calculated dynamically:
+
+```text
+available_seats = total_seats - active_registrations
+```
+
+This prevents inconsistencies caused by storing seat counts separately.
+
+### Active Registrations
+
+Only registrations with:
+
+```text
+status = "active"
+```
+
+are counted toward:
+
+* Total registrations
+* Available seat calculations
+* Registration listings
+
+### Overbooking Protection
+
+SQLite transactions use:
+
+```sql
+BEGIN IMMEDIATE
+```
+
+before registration checks to reduce race conditions and overbooking when multiple users attempt to register simultaneously.
+
+### Validation
+
+Validation is enforced using Pydantic and business rules:
+
+* Event name must be unique
+* Event date must be in the future
+* Total seats must be greater than zero
+* Duplicate registrations are not allowed
+* Full events reject new registrations
+
+---
 
 ## Assumptions
 
-- `total_registrations` reflects active registrations for the purposes of seat availability.
-- Cancelled registrations are retained for auditing, but they do not count toward active registrations or occupied seats.
-- Event dates are compared against the current date in the server timezone.
-- The `GET /events/{id}/registrations` endpoint returns only active registrations. Cancelled registrations remain in the database but are excluded from this listing.
+* Event dates are compared using the server's current date.
+* Cancelled registrations remain in the database.
+* Only active registrations consume seats.
+* total_registrations represents active registrations.
+
+---
+
+## Testing
+
+The API was manually tested through FastAPI Swagger UI.
+
+### Tested Scenarios
+
+* Event creation
+* Duplicate event name validation
+* Future date validation
+* Invalid seat count validation
+* Event retrieval
+* Event filtering
+* Event sorting
+* User registration
+* Duplicate registration prevention
+* Full event prevention
+* Registration cancellation
+* Seat availability recalculation
+* Active registration filtering
+* Invalid event IDs
+* Invalid registration IDs
+
+---
 
 ## Running Locally
 
@@ -153,7 +318,10 @@ uvicorn app.main:app --reload
 uvicorn app.main:app --reload
 ```
 
+---
+
 ## Notes
 
-- The database file is created automatically as `app.db` in the project root.
-- Use the auto-generated OpenAPI docs to experiment with the API.
+* The SQLite database file (`app.db`) is generated automatically.
+* FastAPI automatically generates interactive API documentation.
+* The project focuses on the Event Registration System requirements described in the assessment.
